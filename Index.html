@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>IMD Live Map - Kamrup Metro</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+
+  <style>
+    body { margin:0; }
+    #map { height: 100vh; }
+
+    .legend {
+      background: white;
+      padding: 10px;
+      line-height: 1.5;
+      font-size: 13px;
+      box-shadow: 0 0 5px rgba(0,0,0,0.3);
+    }
+  </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+<script>
+const map = L.map('map').setView([26.1, 91.7], 10);
+
+// =============================
+// BASEMAP
+// =============================
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png')
+  .addTo(map);
+
+// =============================
+// TEMPERATURE COLOR FUNCTION
+// =============================
+function getColor(temp) {
+  return temp > 35 ? "#d73027" :
+         temp > 30 ? "#fc8d59" :
+         temp > 25 ? "#fee08b" :
+         temp > 20 ? "#91bfdb" :
+                     "#4575b4";
+}
+
+// =============================
+// LOAD BOUNDARY (GeoJSON)
+// =============================
+fetch("metro_boundary.geojson")
+  .then(res => res.json())
+  .then(data => {
+    L.geoJSON(data, {
+      style: {
+        color: "black",
+        weight: 2,
+        fillOpacity: 0.05
+      }
+    }).addTo(map);
+  });
+
+// =============================
+// LOAD STATION DATA
+// =============================
+let layerGroup = L.layerGroup().addTo(map);
+
+function loadData() {
+
+  layerGroup.clearLayers();
+
+  fetch("https://raw.githubusercontent.com/sushantakundu/assam-weather-forecast/main/imd_realtime_latest.json")
+    .then(res => res.json())
+    .then(data => {
+
+      data.data.forEach(stn => {
+
+        const lat = parseFloat(stn.Latitude);
+        const lon = parseFloat(stn.Longitude);
+        const temp = parseFloat(stn.CURR_TEMP);
+        const rain = parseFloat(stn.RAINFALL_SEL);
+
+        if (!lat || !lon) return;
+
+        const marker = L.circleMarker([lat, lon], {
+          radius: 7,
+          color: getColor(temp),
+          fillColor: getColor(temp),
+          fillOpacity: 0.8
+        });
+
+        marker.bindPopup(
+          `<b>${stn.STATION}</b><br>
+           🌡 ${temp.toFixed(1)}°C<br>
+           🌧 ${rain.toFixed(1)} mm`
+        );
+
+        layerGroup.addLayer(marker);
+      });
+    });
+}
+
+// Initial load
+loadData();
+
+// Auto refresh every 5 minutes
+setInterval(loadData, 300000);
+
+// =============================
+// LEGEND
+// =============================
+const legend = L.control({position: "bottomright"});
+
+legend.onAdd = function () {
+  const div = L.DomUtil.create("div", "legend");
+
+  div.innerHTML += "<b>Temperature (°C)</b><br>";
+  div.innerHTML += '<i style="background:#d73027;width:12px;height:12px;display:inline-block;"></i> >35<br>';
+  div.innerHTML += '<i style="background:#fc8d59;width:12px;height:12px;display:inline-block;"></i> 30–35<br>';
+  div.innerHTML += '<i style="background:#fee08b;width:12px;height:12px;display:inline-block;"></i> 25–30<br>';
+  div.innerHTML += '<i style="background:#91bfdb;width:12px;height:12px;display:inline-block;"></i> 20–25<br>';
+  div.innerHTML += '<i style="background:#4575b4;width:12px;height:12px;display:inline-block;"></i> <20<br>';
+
+  return div;
+};
+
+legend.addTo(map);
+
+</script>
+
+</body>
+</html>
