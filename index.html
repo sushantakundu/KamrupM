@@ -9,15 +9,58 @@
     body { margin:0; }
     #map { height: 100vh; }
 
+    /* =========================
+       TEMPERATURE DOT
+    ========================= */
+    .temp-marker {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      position: relative;
+    }
+
+    /* =========================
+       RAINFALL RING (ANIMATION)
+    ========================= */
+    .rain-ring {
+      position: absolute;
+      top: -6px;
+      left: -6px;
+      border-radius: 50%;
+      border: 2px solid rgba(0,0,0,0.5);
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(0.6); opacity: 0.8; }
+      70% { transform: scale(1.5); opacity: 0; }
+      100% { opacity: 0; }
+    }
+
+    /* =========================
+       INFO PANEL (TOP RIGHT)
+    ========================= */
+    .info-box {
+      background: white;
+      padding: 8px 12px;
+      font-size: 13px;
+      box-shadow: 0 0 5px rgba(0,0,0,0.3);
+      line-height: 1.5;
+    }
+
+    /* =========================
+       LEGEND
+    ========================= */
     .legend {
       background: white;
       padding: 10px;
-      line-height: 1.5;
       font-size: 13px;
       box-shadow: 0 0 5px rgba(0,0,0,0.3);
+      line-height: 1.5;
     }
   </style>
 </head>
+
 <body>
 
 <div id="map"></div>
@@ -34,7 +77,7 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png')
   .addTo(map);
 
 // =============================
-// TEMPERATURE COLOR FUNCTION
+// TEMPERATURE COLOR SCALE
 // =============================
 function getColor(temp) {
   return temp > 35 ? "#d73027" :
@@ -45,32 +88,78 @@ function getColor(temp) {
 }
 
 // =============================
-// LOAD BOUNDARY (GeoJSON)
+// RAINFALL → RING SIZE
+// =============================
+function getRingSize(rain) {
+  if (rain >= 10) return 36;
+  if (rain >= 5) return 30;
+  if (rain >= 1) return 24;
+  return 0;
+}
+
+// =============================
+// BOUNDARY
 // =============================
 fetch("metro_boundary.geojson")
   .then(res => res.json())
   .then(data => {
-    L.geoJSON(data, {
+    const boundary = L.geoJSON(data, {
       style: {
         color: "black",
         weight: 2,
         fillOpacity: 0.05
       }
     }).addTo(map);
+
+    map.fitBounds(boundary.getBounds());
   });
 
 // =============================
-// LOAD STATION DATA
+// LAYER GROUP
 // =============================
 let layerGroup = L.layerGroup().addTo(map);
 
+// =============================
+// INFO PANEL (TIME + STATUS)
+// =============================
+const info = L.control({position: "topright"});
+
+info.onAdd = function () {
+  this._div = L.DomUtil.create('div', 'info-box');
+  this.update("Loading...", "Waiting...");
+  return this._div;
+};
+
+info.update = function(time, status) {
+  this._div.innerHTML = `
+    <b>Last Update:</b><br>${time}<br>
+    <b>Status:</b> ${status}
+  `;
+};
+
+info.addTo(map);
+
+// =============================
+// LOAD DATA FUNCTION
+// =============================
 function loadData() {
+
+  info.update("Updating...", "Fetching data");
 
   layerGroup.clearLayers();
 
   fetch("https://raw.githubusercontent.com/sushantakundu/assam-weather-forecast/main/imd_realtime_latest.json")
     .then(res => res.json())
     .then(data => {
+
+      const generated = data.generated_at || "";
+
+      let timeStr = generated;
+
+      try {
+        const dt = new Date(generated + " UTC");
+        timeStr = dt.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) + " IST";
+      } catch {}
 
       data.data.forEach(stn => {
 
@@ -81,12 +170,30 @@ function loadData() {
 
         if (!lat || !lon) return;
 
-        const marker = L.circleMarker([lat, lon], {
-          radius: 7,
-          color: getColor(temp),
-          fillColor: getColor(temp),
-          fillOpacity: 0.8
+        const color = getColor(temp);
+        const ringSize = getRingSize(rain);
+
+        let ringHTML = "";
+
+        if (ringSize > 0) {
+          ringHTML = `<div class="rain-ring" 
+                        style="width:${ringSize}px;height:${ringSize}px;">
+                      </div>`;
+        }
+
+        const html = `
+          <div class="temp-marker" style="background:${color}">
+            ${ringHTML}
+          </div>
+        `;
+
+        const icon = L.divIcon({
+          className: "",
+          html: html,
+          iconSize: [20, 20]
         });
+
+        const marker = L.marker([lat, lon], { icon: icon });
 
         marker.bindPopup(
           `<b>${stn.STATION}</b><br>
@@ -96,14 +203,21 @@ function loadData() {
 
         layerGroup.addLayer(marker);
       });
+
+      info.update(timeStr, "Updated ✔");
+
+    })
+    .catch(err => {
+      console.error(err);
+      info.update("Error", "Failed ❌");
     });
 }
 
-// Initial load
+// =============================
+// INITIAL LOAD + AUTO REFRESH
+// =============================
 loadData();
-
-// Auto refresh every 5 minutes
-setInterval(loadData, 300000);
+setInterval(loadData, 300000); // 5 min
 
 // =============================
 // LEGEND
@@ -119,6 +233,10 @@ legend.onAdd = function () {
   div.innerHTML += '<i style="background:#fee08b;width:12px;height:12px;display:inline-block;"></i> 25–30<br>';
   div.innerHTML += '<i style="background:#91bfdb;width:12px;height:12px;display:inline-block;"></i> 20–25<br>';
   div.innerHTML += '<i style="background:#4575b4;width:12px;height:12px;display:inline-block;"></i> <20<br>';
+
+  div.innerHTML += "<br><b>Rainfall</b><br>";
+  div.innerHTML += "Pulse ring = Rain present<br>";
+  div.innerHTML += "Bigger ring = Higher rainfall";
 
   return div;
 };
