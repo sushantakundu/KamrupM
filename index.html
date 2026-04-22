@@ -10,35 +10,26 @@
     #map { height: 100vh; }
 
     /* =========================
-       TEMPERATURE DOT
-    ========================= */
-    .temp-marker {
-      width: 12px;
-      height: 12px;
-      border-radius: 50%;
-      position: relative;
-    }
-
-    /* =========================
-       RAINFALL RING (ANIMATION)
+       RAINFALL RING
     ========================= */
     .rain-ring {
       position: absolute;
-      top: -6px;
-      left: -6px;
+      top: -8px;
+      left: -8px;
       border-radius: 50%;
-      border: 2px solid rgba(0,0,0,0.5);
+      border: 2px solid rgba(0,0,0,0.6);
       animation: pulse 1.5s infinite;
+      pointer-events: none;
     }
 
     @keyframes pulse {
-      0% { transform: scale(0.6); opacity: 0.8; }
-      70% { transform: scale(1.5); opacity: 0; }
+      0% { transform: scale(0.5); opacity: 0.9; }
+      70% { transform: scale(1.6); opacity: 0; }
       100% { opacity: 0; }
     }
 
     /* =========================
-       INFO PANEL (TOP RIGHT)
+       INFO BOX
     ========================= */
     .info-box {
       background: white;
@@ -71,13 +62,15 @@
 const map = L.map('map').setView([26.1, 91.7], 10);
 
 // =============================
-// BASEMAP
+// BASEMAP (slightly muted)
 // =============================
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png')
-  .addTo(map);
+L.tileLayer(
+  'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+  { opacity: 0.75 }
+).addTo(map);
 
 // =============================
-// TEMPERATURE COLOR SCALE
+// TEMPERATURE COLOR
 // =============================
 function getColor(temp) {
   return temp > 35 ? "#d73027" :
@@ -88,7 +81,7 @@ function getColor(temp) {
 }
 
 // =============================
-// RAINFALL → RING SIZE
+// RAINFALL RING SIZE
 // =============================
 function getRingSize(rain) {
   if (rain >= 10) return 36;
@@ -98,7 +91,7 @@ function getRingSize(rain) {
 }
 
 // =============================
-// BOUNDARY
+// LOAD BOUNDARY
 // =============================
 fetch("metro_boundary.geojson")
   .then(res => res.json())
@@ -120,7 +113,7 @@ fetch("metro_boundary.geojson")
 let layerGroup = L.layerGroup().addTo(map);
 
 // =============================
-// INFO PANEL (TIME + STATUS)
+// INFO PANEL
 // =============================
 const info = L.control({position: "topright"});
 
@@ -140,7 +133,7 @@ info.update = function(time, status) {
 info.addTo(map);
 
 // =============================
-// LOAD DATA FUNCTION
+// LOAD DATA
 // =============================
 function loadData() {
 
@@ -153,7 +146,6 @@ function loadData() {
     .then(data => {
 
       const generated = data.generated_at || "";
-
       let timeStr = generated;
 
       try {
@@ -173,16 +165,26 @@ function loadData() {
         const color = getColor(temp);
         const ringSize = getRingSize(rain);
 
-        let ringHTML = "";
+        const baseSize = rain > 0 ? 12 : 10;
 
+        let ringHTML = "";
         if (ringSize > 0) {
-          ringHTML = `<div class="rain-ring" 
-                        style="width:${ringSize}px;height:${ringSize}px;">
-                      </div>`;
+          ringHTML = `
+            <div class="rain-ring"
+                 style="width:${ringSize}px;height:${ringSize}px;">
+            </div>`;
         }
 
         const html = `
-          <div class="temp-marker" style="background:${color}">
+          <div style="
+            width:${baseSize}px;
+            height:${baseSize}px;
+            background:${color};
+            border:2px solid white;
+            border-radius:50%;
+            position:relative;
+            box-shadow:0 0 4px rgba(0,0,0,0.6);
+          ">
             ${ringHTML}
           </div>
         `;
@@ -190,7 +192,7 @@ function loadData() {
         const icon = L.divIcon({
           className: "",
           html: html,
-          iconSize: [20, 20]
+          iconSize: [24, 24]
         });
 
         const marker = L.marker([lat, lon], { icon: icon });
@@ -214,10 +216,10 @@ function loadData() {
 }
 
 // =============================
-// INITIAL LOAD + AUTO REFRESH
+// INITIAL + AUTO REFRESH
 // =============================
 loadData();
-setInterval(loadData, 300000); // 5 min
+setInterval(loadData, 300000);
 
 // =============================
 // LEGEND
